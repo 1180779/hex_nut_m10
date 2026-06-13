@@ -113,6 +113,43 @@ TopoDS_Shape makeChamferGrooveSketch(const float dw, const float e, const float 
     return compound;
 }
 
+TopoDS_Shape makeInternalChamferGrooveSketch(const float da, const float m, const float thetaDeg) {
+    const float dad2 = da / 2.0f;
+    const float md2 = m / 2.0f;
+    const float chamferAngleRad = (180.0f - thetaDeg) * static_cast<float>(M_PI) / 180.0f;
+
+    // cone apex z-coordinate: where the slanted flank (at 180-theta from horizontal)
+    // starting at (r = da / 2, z=+-m / 2) intersects the revolution axis (r=0):
+    // apexZ = md2 - dad2 * tan(180 - theta)
+    const float apexZ = md2 - dad2 * std::tan(chamferAngleRad);
+
+    auto makeTri = [](const gp_Pnt &a, const gp_Pnt &b, const gp_Pnt &c) {
+        BRepBuilderAPI_MakeWire w;
+        w.Add(BRepBuilderAPI_MakeEdge(a, b));
+        w.Add(BRepBuilderAPI_MakeEdge(b, c));
+        w.Add(BRepBuilderAPI_MakeEdge(c, a));
+        ASSERT_DONE(w);
+        return BRepBuilderAPI_MakeFace(w.Wire()).Face();
+    };
+
+    // top countersink triangle in XZ half-plane (y=0), revolved around Z
+    const gp_Pnt topP1{0.0f, 0.0f, md2};
+    const gp_Pnt topP2{-dad2, 0.0f, md2};
+    const gp_Pnt topP3{0.0f, 0.0f, apexZ};
+
+    // bottom countersink: mirror of top about z=0 (i.e., the X axis in the XZ sketch plane)
+    const gp_Pnt botP1{0.0f, 0.0f, -md2};
+    const gp_Pnt botP2{dad2, 0.0f, -md2};
+    const gp_Pnt botP3{0.0f, 0.0f, -apexZ};
+
+    TopoDS_Compound compound;
+    constexpr BRep_Builder builder;
+    builder.MakeCompound(compound);
+    builder.Add(compound, makeTri(topP1, topP2, topP3));
+    builder.Add(compound, makeTri(botP1, botP2, botP3));
+    return compound;
+}
+
 TopoDS_Shape groove(const TopoDS_Shape &base, const TopoDS_Shape &sketch) {
     const gp_Ax1 zAxis(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1));
     const TopoDS_Shape tool = BRepPrimAPI_MakeRevol(sketch, zAxis).Shape();
@@ -134,7 +171,14 @@ int main() {
         params.getBeta(),
         params.getM()
     );
-    const TopoDS_Shape result = groove(bored, chamferSketch);
+    const TopoDS_Shape withExternalChamfer = groove(bored, chamferSketch);
+
+    const TopoDS_Shape internalChamferSketch = makeInternalChamferGrooveSketch(
+        params.getDa(),
+        params.getM(),
+        params.getTheta()
+    );
+    const TopoDS_Shape result = groove(withExternalChamfer, internalChamferSketch);
 
     const BRepMesh_IncrementalMesh mesh(result, 0.1); //, false, 0.1);
     ASSERT_DONE(mesh);
