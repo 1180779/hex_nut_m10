@@ -5,8 +5,6 @@
 #ifndef CAMCAM_HEX_NUT_M10_HEXNUTPARAMS_HPP
 #define CAMCAM_HEX_NUT_M10_HEXNUTPARAMS_HPP
 
-#include <cmath>
-
 /// @brief Parameters for an ISO 4032 metric hex nut, including thread profile and bearing face dimensions
 class HexNutParams {
 private:
