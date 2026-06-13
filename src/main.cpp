@@ -7,6 +7,9 @@
 #include <BRepBuilderAPI_MakeWire.hxx>
 #include <BRepBuilderAPI_Transform.hxx>
 #include <BRepAlgoAPI_Cut.hxx>
+#include <BRepPrimAPI_MakeRevol.hxx>
+#include <BRep_Builder.hxx>
+#include <TopoDS_Compound.hxx>
 #include <gp_Pnt.hxx>
 #include <gp_Circ.hxx>
 #include <gp_Trsf.hxx>
@@ -70,6 +73,52 @@ TopoDS_Shape pocket(const TopoDS_Shape &base, const TopoDS_Face &sketch, const f
     return BRepAlgoAPI_Cut(base, tool).Shape();
 }
 
+TopoDS_Shape makeChamferGrooveSketch(const float dw, const float e, const float betaDeg, const float m) {
+    const float dwd2 = dw / 2.0f;
+    const float rOuter = e;
+    const float md2 = m / 2.0f;
+    const float betaRad = betaDeg * static_cast<float>(M_PI) / 180.0f;
+
+    // p3 is the intersection of
+    // the vertical line through p2 (y = rOuter)
+    // and the line from p1 rising at angle beta above the horizontal p1-p2 baseline,
+    // therefore,
+    // p3.z = p2.z + (rOuter - dwd2) * tan(beta)
+    const float chamferHeight = (rOuter - dwd2) * std::tan(betaRad);
+
+    auto makeTri = [](const gp_Pnt &a, const gp_Pnt &b, const gp_Pnt &c) {
+        BRepBuilderAPI_MakeWire w;
+        w.Add(BRepBuilderAPI_MakeEdge(a, b));
+        w.Add(BRepBuilderAPI_MakeEdge(b, c));
+        w.Add(BRepBuilderAPI_MakeEdge(c, a));
+        ASSERT_DONE(w);
+        return BRepBuilderAPI_MakeFace(w.Wire()).Face();
+    };
+
+    // bottom chamfer triangle in YZ half-plane (x=0), revolved around Z
+    const gp_Pnt botP1{0.0, dwd2, -md2};
+    const gp_Pnt botP2{0.0f, rOuter, -md2};
+    const gp_Pnt botP3{0.0f, rOuter, -md2 + chamferHeight};
+
+    // top chamfer triangle: mirror of bottom about z=0 (i.e., the Y axis in the YZ sketch plane)
+    const gp_Pnt topP1{0.0f, dwd2, md2};
+    const gp_Pnt topP2{0.0f, rOuter, md2};
+    const gp_Pnt topP3{0.0f, rOuter, md2 - chamferHeight};
+
+    TopoDS_Compound compound;
+    constexpr BRep_Builder builder;
+    builder.MakeCompound(compound);
+    builder.Add(compound, makeTri(botP1, botP2, botP3));
+    builder.Add(compound, makeTri(topP1, topP2, topP3));
+    return compound;
+}
+
+TopoDS_Shape groove(const TopoDS_Shape &base, const TopoDS_Shape &sketch) {
+    const gp_Ax1 zAxis(gp_Pnt(0, 0, 0), gp_Dir(0, 0, 1));
+    const TopoDS_Shape tool = BRepPrimAPI_MakeRevol(sketch, zAxis).Shape();
+    return BRepAlgoAPI_Cut(base, tool).Shape();
+}
+
 int main() {
     const HexNutParams params{};
 
@@ -77,7 +126,15 @@ int main() {
     const TopoDS_Shape hexShape = pad(hexSketch, params.getM());
 
     const TopoDS_Face pocketSketch = makePocketSketch(params.getD() / 2.0f);
-    const TopoDS_Shape result = pocket(hexShape, pocketSketch, params.getM());
+    const TopoDS_Shape bored = pocket(hexShape, pocketSketch, params.getM());
+
+    const TopoDS_Shape chamferSketch = makeChamferGrooveSketch(
+        params.getDw(),
+        params.getE(),
+        params.getBeta(),
+        params.getM()
+    );
+    const TopoDS_Shape result = groove(bored, chamferSketch);
 
     const BRepMesh_IncrementalMesh mesh(result, 0.1); //, false, 0.1);
     ASSERT_DONE(mesh);
