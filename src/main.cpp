@@ -41,70 +41,62 @@
 
 #define ASSERT_DONE(builder) ASSERT_TRUE((builder).IsDone())
 
-inline TopoDS_Face makeHexSketch(float circumradius);
+TopoDS_Face makeHexSketch(float circumradius);
 
-inline TopoDS_Shape pad(const TopoDS_Face &sketch, float height);
+TopoDS_Shape pad(const TopoDS_Face &sketch, float height);
 
-inline TopoDS_Shape cutHole(const TopoDS_Shape &base, float radius, float height);
+TopoDS_Shape cutHole(const TopoDS_Shape &base, float radius, float height);
 
-inline TopoDS_Shape makeChamferGrooveSketch(float dw, float e, float betaDeg, float m);
+TopoDS_Shape makeChamferGrooveSketch(float dw, float e, float betaDeg, float m);
 
-inline TopoDS_Shape makeInternalChamferGrooveSketch(float da, float m, float thetaDeg);
+TopoDS_Shape makeInternalChamferGrooveSketch(float da, float m, float thetaDeg);
 
-inline TopoDS_Shape makeThreadTool(float d, float m, float p, float threadDepth);
+TopoDS_Shape makeThreadTool(float d, float m, float p, float threadDepth);
 
-inline TopoDS_Shape trimExtensions(const TopoDS_Shape &shape, float trimR, float m);
+TopoDS_Shape trimExtensions(const TopoDS_Shape &shape, float trimR, float m);
 
-inline TopoDS_Shape groove(const TopoDS_Shape &base, const TopoDS_Shape &sketch);
+TopoDS_Shape groove(const TopoDS_Shape &base, const TopoDS_Shape &sketch);
 
-inline void checkShape(const TopoDS_Shape &shape, const char *tag);
+void checkShape(const TopoDS_Shape &shape, const char *tag);
+
+class HexNutBuilder {
+public:
+    explicit HexNutBuilder(const HexNutParams &p) : m_p(p), m_extM(2.0f * p.getM()) {}
+
+    HexNutBuilder& hexPad();
+
+    HexNutBuilder& externalChamfer();
+
+    HexNutBuilder& internalChamfer();
+
+    HexNutBuilder& thread();
+
+    HexNutBuilder& bore();
+
+    HexNutBuilder& trim();
+
+    [[nodiscard]] const TopoDS_Shape& shape() const {
+        return m_shape;
+    }
+
+private:
+    const HexNutParams &m_p;
+    float m_extM;
+    TopoDS_Shape m_shape;
+};
 
 int main() {
     const HexNutParams params{};
-    const float m = params.getM();
-    const float extM = 2.0f * m;
 
-    const TopoDS_Face hexSketch = makeHexSketch(params.getE() / 2.0f);
-    const TopoDS_Shape hexShape = pad(hexSketch, extM);
-
-    const TopoDS_Shape withExternalChamfer = groove(
-        hexShape,
-        makeChamferGrooveSketch(
-            params.getDw(),
-            params.getE(),
-            params.getBeta(),
-            m
-        )
-    );
-    const TopoDS_Shape withInternalChamfer = groove(
-        withExternalChamfer,
-        makeInternalChamferGrooveSketch(
-            params.getDa(),
-            m,
-            params.getTheta()
-        )
-    );
-
-    const TopoDS_Shape threadTool = makeThreadTool(
-        params.getD(),
-        extM,
-        params.getP(),
-        params.getThreadDepth()
-    );
-    checkShape(threadTool, "threadTool");
-    checkShape(withInternalChamfer, "withInternalChamfer (before thread cut)");
-
-    // important: hole is cut after the thread tool
-    BRepAlgoAPI_Cut threadCut(withInternalChamfer, threadTool);
-    threadCut.Build();
-    ASSERT_DONE(threadCut);
-    checkShape(threadCut.Shape(), "after threadCut");
-
-    const TopoDS_Shape holeCutShape = cutHole(threadCut.Shape(), params.getD() / 2.0f, extM);
-    checkShape(holeCutShape, "after cutHole");
-
-    const TopoDS_Shape result = trimExtensions(holeCutShape, params.getE(), m);
-    checkShape(result, "after trimExtensions");
+    // important: bore is cut after thread so the bore wall is never coincident with helix faces
+    const TopoDS_Shape result = HexNutBuilder(params)
+                                .hexPad()
+                                .externalChamfer()
+                                .internalChamfer()
+                                .thread()
+                                .bore()
+                                .trim()
+                                .shape();
 
     const BRepMesh_IncrementalMesh mesh(result, 0.01, false, 0.05);
     ASSERT_DONE(mesh);
@@ -336,4 +328,55 @@ void checkShape(const TopoDS_Shape &shape, const char *tag) {
     else {
         std::cout << "[FAIL] " << tag << " shape is invalid\n";
     }
+}
+
+HexNutBuilder& HexNutBuilder::hexPad() {
+    m_shape = pad(makeHexSketch(m_p.getE() / 2.0f), m_extM);
+    checkShape(m_shape, "hexPad");
+    return *this;
+}
+
+HexNutBuilder& HexNutBuilder::externalChamfer() {
+    m_shape = groove(
+        m_shape,
+        makeChamferGrooveSketch(m_p.getDw(), m_p.getE(), m_p.getBeta(), m_p.getM())
+    );
+    checkShape(m_shape, "externalChamfer");
+    return *this;
+}
+
+HexNutBuilder& HexNutBuilder::internalChamfer() {
+    m_shape = groove(
+        m_shape,
+        makeInternalChamferGrooveSketch(m_p.getDa(), m_p.getM(), m_p.getTheta())
+    );
+    checkShape(m_shape, "internalChamfer");
+    return *this;
+}
+
+HexNutBuilder& HexNutBuilder::thread() {
+    const TopoDS_Shape tool = makeThreadTool(
+        m_p.getD(),
+        m_extM,
+        m_p.getP(),
+        m_p.getThreadDepth()
+    );
+    BRepAlgoAPI_Cut cut(m_shape, tool);
+    cut.Build();
+    ASSERT_DONE(cut);
+    m_shape = cut.Shape();
+    checkShape(m_shape, "thread");
+    return *this;
+}
+
+HexNutBuilder& HexNutBuilder::bore() {
+    m_shape = cutHole(m_shape, m_p.getD() / 2.0f, m_extM);
+    checkShape(m_shape, "bore");
+    return *this;
+}
+
+HexNutBuilder& HexNutBuilder::trim() {
+    m_shape = trimExtensions(m_shape, m_p.getE(), m_p.getM());
+    checkShape(m_shape, "trim");
+    return *this;
 }
