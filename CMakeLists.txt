@@ -9,10 +9,6 @@ find_package(OpenCASCADE REQUIRED)
 add_executable(camcam_hex_nut_m10
         src/main.cpp
         src/HexNutParams.hpp
-        #        src/Params.cpp
-#        src/NutBuilder.cpp
-#        src/Exporters.cpp
-#        src/SvgPlotter.cpp
 )
 
 target_include_directories(camcam_hex_nut_m10 PRIVATE ${OpenCASCADE_INCLUDE_DIR})
@@ -23,4 +19,5 @@ target_link_libraries(camcam_hex_nut_m10 PRIVATE
         TKBRep TKGeomAlgo TKTopAlgo TKPrim TKBO TKShHealing
         TKMesh
         TKSTEP TKSTL
+        TKOffset
 )
