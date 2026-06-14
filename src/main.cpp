@@ -20,7 +20,6 @@
 #include <Geom_CylindricalSurface.hxx>
 #include <Geom2d_Line.hxx>
 #include <gp_Pnt.hxx>
-#include <gp_Circ.hxx>
 #include <gp_Trsf.hxx>
 #include <gp_Ax3.hxx>
 #include <gp_Pnt2d.hxx>
@@ -30,6 +29,9 @@
 #include <string>
 #include <iostream>
 #include <numbers>
+#include <optional>
+
+#include <CLI/CLI.hpp>
 
 #include "HexNutParams.hpp"
 #include "SVGExporter.hpp"
@@ -61,6 +63,170 @@ TopoDS_Shape groove(const TopoDS_Shape &base, const TopoDS_Shape &sketch);
 
 void checkShape(const TopoDS_Shape &shape, const char *tag);
 
+struct Args {
+    HexNutParams params;
+    std::string outStl;
+    std::string outStep;
+    std::string outSvgTop;
+    std::string outSvgSide;
+};
+
+/// @brief formats a float without trailing zeros
+static std::string fmtFloat(float v) {
+    std::string s = std::to_string(v);
+    if (s.find('.') != std::string::npos) {
+        s.erase(s.find_last_not_of('0') + 1);
+        if (s.back() == '.') {
+            s.pop_back();
+        }
+    }
+    return s;
+}
+
+Args parseArgs(int argc, char **argv) {
+    static constexpr std::string_view SIZES_NOTE =
+        "Available ISO 4032 sizes: 1.6, 2, 2.5, 3, 4, 5, 6, 8, 10, 12, 16, 20 (mm).";
+
+    CLI::App app{"Hex nut generator (ISO 4032)\n" + std::string(SIZES_NOTE)};
+    app.set_version_flag("-v,--version", "1.0.0");
+
+    float argD = HexNutParams::M10_NOMINAL_DIAMETER;
+    std::optional<float> argP, argDa, argDw, argS, argM, argTheta, argBeta, argFlankAngle;
+    Args out;
+
+    app.add_option(
+        "-d,--diameter",
+        argD,
+        "Nominal thread diameter in mm (default: 10). " + std::string(SIZES_NOTE)
+    )->capture_default_str();
+    app.add_option(
+        "-p,--pitch",
+        argP,
+        "Thread pitch in mm. Overrides the ISO table value for the selected diameter."
+    );
+    app.add_option(
+        "--da",
+        argDa,
+        "Countersink diameter in mm (ISO 4032 da_max). Overrides ISO table."
+    );
+    app.add_option(
+        "--dw",
+        argDw,
+        "Bearing face outer diameter in mm (ISO 4032 dw_min). Overrides ISO table."
+    );
+    app.add_option(
+        "-s,--flats",
+        argS,
+        "Width across flats in mm (ISO 4032 s_nom). Overrides ISO table."
+    );
+    app.add_option(
+        "-m,--height",
+        argM,
+        "Nut height in mm (ISO 4032 m_max). Overrides ISO table."
+    );
+    app.add_option(
+        "--theta",
+        argTheta,
+        "Internal countersink angle in degrees (default 120)."
+    );
+    app.add_option(
+        "--beta",
+        argBeta,
+        "External chamfer angle in degrees (default 30)."
+    );
+    app.add_option(
+        "--flank-angle",
+        argFlankAngle,
+        "Thread flank angle in degrees (default 60)."
+    );
+
+    app.add_option("-o,--out-stl", out.outStl, "Output STL file path (default: auto).");
+    app.add_option("--out-step", out.outStep, "Output STEP file path (default: auto).");
+    app.add_option("--out-svg-top", out.outSvgTop, "Output SVG top-view path (default: auto).");
+    app.add_option("--out-svg-side", out.outSvgSide, "Output SVG side-view path (default: auto).");
+
+    try {
+        app.parse(argc, argv);
+    }
+    catch (const CLI::ParseError &e) {
+        std::exit(app.exit(e));
+    }
+
+    out.params.setD(argD);
+    if (argP) {
+        out.params.setP(*argP);
+    }
+    if (argDa) {
+        out.params.setDa(*argDa);
+    }
+    if (argDw) {
+        out.params.setDw(*argDw);
+    }
+    if (argS) {
+        out.params.setS(*argS);
+    }
+    if (argM) {
+        out.params.setM(*argM);
+    }
+    if (argTheta) {
+        out.params.setTheta(*argTheta);
+    }
+    if (argBeta) {
+        out.params.setBeta(*argBeta);
+    }
+    if (argFlankAngle) {
+        out.params.setThreadFlankAngle(*argFlankAngle);
+    }
+
+    if (out.outStl.empty() || out.outStep.empty() || out.outSvgTop.empty() || out.outSvgSide.empty()) {
+        std::string stem = "hex_M" + fmtFloat(argD);
+        const bool anyOverride = argP || argDa || argDw || argS || argM || argTheta || argBeta || argFlankAngle;
+        if (!anyOverride) {
+            stem += "_iso";
+        }
+        else {
+            if (argP) {
+                stem += "_p" + fmtFloat(*argP);
+            }
+            if (argDa) {
+                stem += "_da" + fmtFloat(*argDa);
+            }
+            if (argDw) {
+                stem += "_dw" + fmtFloat(*argDw);
+            }
+            if (argS) {
+                stem += "_s" + fmtFloat(*argS);
+            }
+            if (argM) {
+                stem += "_m" + fmtFloat(*argM);
+            }
+            if (argTheta) {
+                stem += "_theta" + fmtFloat(*argTheta);
+            }
+            if (argBeta) {
+                stem += "_beta" + fmtFloat(*argBeta);
+            }
+            if (argFlankAngle) {
+                stem += "_flank" + fmtFloat(*argFlankAngle);
+            }
+        }
+        if (out.outStl.empty()) {
+            out.outStl = stem + ".stl";
+        }
+        if (out.outStep.empty()) {
+            out.outStep = stem + ".stp";
+        }
+        if (out.outSvgTop.empty()) {
+            out.outSvgTop = stem + "_top.svg";
+        }
+        if (out.outSvgSide.empty()) {
+            out.outSvgSide = stem + "_side.svg";
+        }
+    }
+
+    return out;
+}
+
 class HexNutBuilder {
 public:
     explicit HexNutBuilder(const HexNutParams &p) : m_p(p), m_extM(2.0f * p.getM()) {}
@@ -82,13 +248,13 @@ public:
     }
 
 private:
-    const HexNutParams &m_p;
+    const HexNutParams m_p;
     float m_extM;
     TopoDS_Shape m_shape;
 };
 
-int main() {
-    const HexNutParams params{};
+int main(int argc, char **argv) {
+    const auto [params, outStl, outStep, outSvgTop, outSvgSide] = parseArgs(argc, argv);
 
     // important: bore is cut after thread so the bore wall is never coincident with helix faces
     const TopoDS_Shape result = HexNutBuilder(params)
@@ -104,15 +270,15 @@ int main() {
     ASSERT_DONE(mesh);
 
     StlAPI_Writer hexWriter;
-    hexWriter.Write(result, "hex.stl");
+    hexWriter.Write(result, outStl.c_str());
 
     STEPControl_Writer stepWriter;
     stepWriter.Transfer(result, STEPControl_AsIs);
-    stepWriter.Write("hex.stp");
+    stepWriter.Write(outStep.c_str());
 
     SVGExporter svg(params);
-    svg.exportTopView("hex_top.svg");
-    svg.exportSideView("hex_side.svg");
+    svg.exportTopView(outSvgTop);
+    svg.exportSideView(outSvgSide);
 
     std::cout << "DONE" << std::endl;
     return 0;
@@ -272,7 +438,7 @@ TopoDS_Shape makeThreadTool(const float d, const float m, const float p, const f
     ASSERT_DONE(edgeMaker);
     BRepLib::BuildCurve3d(edgeMaker.Edge());
 
-    Standard_Real f, l;
+    double f, l;
     const Handle(Geom_Curve) helix3d = BRep_Tool::Curve(edgeMaker.Edge(), f, l);
     BRepBuilderAPI_MakeEdge spineEdge(helix3d, f, l);
     ASSERT_DONE(spineEdge);

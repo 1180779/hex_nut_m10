@@ -1,11 +1,10 @@
-#ifndef CAMCAM_HEX_NUT_M10_SVGEXPORTER_HPP
-#define CAMCAM_HEX_NUT_M10_SVGEXPORTER_HPP
+#ifndef CADCAM_HEX_NUT_M10_SVGEXPORTER_HPP
+#define CADCAM_HEX_NUT_M10_SVGEXPORTER_HPP
 
 #include <svg.hpp>
 #include <fstream>
 #include <string>
 #include <vector>
-#include <cmath>
 #include <numbers>
 #include <sstream>
 #include <iomanip>
@@ -706,4 +705,4 @@ inline void SVGExporter::exportSideView(const std::string &filename) {
     out << std::string(root);
 }
 
-#endif //CAMCAM_HEX_NUT_M10_SVGEXPORTER_HPP
+#endif //CADCAM_HEX_NUT_M10_SVGEXPORTER_HPP
