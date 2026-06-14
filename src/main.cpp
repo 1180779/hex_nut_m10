@@ -25,10 +25,11 @@
 #include <gp_Ax3.hxx>
 #include <gp_Pnt2d.hxx>
 #include <gp_Dir2d.hxx>
-#include <cmath>
+#include <gp.hxx>
 #include <stdexcept>
 #include <string>
 #include <iostream>
+#include <numbers>
 
 #include "HexNutParams.hpp"
 
@@ -113,9 +114,9 @@ int main() {
 }
 
 TopoDS_Face makeHexSketch(const float circumradius) {
-    constexpr int VERTEX_COUNT = 6;
-    constexpr float ANGLE_STEP = 2.0f * static_cast<float>(M_PI) / VERTEX_COUNT;
-    constexpr auto ANGLE_OFFSET = static_cast<float>(M_PI / 6.0);
+    static constexpr int VERTEX_COUNT = 6;
+    static constexpr float ANGLE_STEP = 2.0f * std::numbers::pi_v<float> / VERTEX_COUNT;
+    static constexpr auto ANGLE_OFFSET = std::numbers::pi_v<float> / 6.0f;
 
     gp_Pnt vertices[VERTEX_COUNT];
     for (int i = 0; i < VERTEX_COUNT; ++i) {
@@ -133,14 +134,14 @@ TopoDS_Face makeHexSketch(const float circumradius) {
 
 TopoDS_Shape pad(const TopoDS_Face &sketch, const float height) {
     gp_Trsf t;
-    t.SetTranslation(gp_Vec(0, 0, -height / 2.0f));
+    t.SetTranslation(gp_Vec(gp::DZ()) * (-height / 2.0f));
     const TopoDS_Shape centered = BRepBuilderAPI_Transform(sketch, t).Shape();
-    return BRepPrimAPI_MakePrism(centered, gp_Vec(0, 0, height));
+    return BRepPrimAPI_MakePrism(centered, gp_Vec(gp::DZ()) * height);
 }
 
 TopoDS_Shape cutHole(const TopoDS_Shape &base, const float radius, const float height) {
     const TopoDS_Shape cyl = BRepPrimAPI_MakeCylinder(
-        gp_Ax2(gp_Pnt(0, 0, -height / 2.0f), gp_Dir(0, 0, 1)),
+        gp_Ax2(gp_Pnt(0, 0, -height / 2.0f), gp::DZ()),
         radius,
         height
     ).Shape();
@@ -151,7 +152,7 @@ TopoDS_Shape makeChamferGrooveSketch(const float dw, const float e, const float 
     const float dwd2 = dw / 2.0f;
     const float rOuter = e;
     const float md2 = m / 2.0f;
-    const float betaRad = betaDeg * static_cast<float>(M_PI) / 180.0f;
+    const float betaRad = betaDeg * std::numbers::pi_v<float> / 180.0f;
 
     // p3 is the intersection of
     // the vertical line through p2 (y = rOuter)
@@ -190,7 +191,7 @@ TopoDS_Shape makeChamferGrooveSketch(const float dw, const float e, const float 
 TopoDS_Shape makeInternalChamferGrooveSketch(const float da, const float m, const float thetaDeg) {
     const float dad2 = da / 2.0f;
     const float md2 = m / 2.0f;
-    const float chamferAngleRad = (180.0f - thetaDeg) * static_cast<float>(M_PI) / 180.0f;
+    const float chamferAngleRad = (180.0f - thetaDeg) * std::numbers::pi_v<float> / 180.0f;
 
     // cone apex z-coordinate: where the slanted flank (at 180-theta from horizontal)
     // starting at (r = da / 2, z=+-m / 2) intersects the revolution axis (r=0):
@@ -230,7 +231,7 @@ TopoDS_Shape makeThreadTool(const float d, const float m, const float p, const f
     const float flankH = threadDepth / std::sqrt(3.0f);
 
     // extend pi1/pi2 inward so the cut never touches the inner face
-    constexpr float EXT = 0.2f;
+    static constexpr float EXT = 0.2f;
     const float flankNorm = std::sqrt(threadDepth * threadDepth + flankH * flankH);
     const float dr = EXT * threadDepth / flankNorm;
     const float dz = EXT * flankH / flankNorm;
@@ -249,15 +250,12 @@ TopoDS_Shape makeThreadTool(const float d, const float m, const float p, const f
     profWire.Add(BRepBuilderAPI_MakeEdge(po1, pi1));
     ASSERT_DONE(profWire);
 
-    const float slope = p / (2.0f * static_cast<float>(M_PI));
+    const float slope = p / (2.0f * std::numbers::pi_v<float>);
     const float norm2d = std::sqrt(1.0f + slope * slope);
     const float N = m / p + 2.0f;
-    const float tEnd = 2.0f * static_cast<float>(M_PI) * N * norm2d;
+    const float tEnd = 2.0f * std::numbers::pi_v<float> * N * norm2d;
 
-    const gp_Ax3 cylAx(
-        gp_Pnt(0, 0, 0),
-        gp_Dir(0, 0, 1)
-    );
+    const gp_Ax3 cylAx(gp::Origin(), gp::DZ());
     Handle(Geom_CylindricalSurface) cyl = new Geom_CylindricalSurface(cylAx, dd2);
     Handle(Geom2d_Line) helixLine =
         new Geom2d_Line(
@@ -279,7 +277,7 @@ TopoDS_Shape makeThreadTool(const float d, const float m, const float p, const f
     ASSERT_DONE(spineWire);
 
     BRepOffsetAPI_MakePipeShell pipe(spineWire.Wire());
-    pipe.SetMode(gp_Dir(0, 0, 1));
+    pipe.SetMode(gp::DZ());
     pipe.Add(profWire.Wire());
     pipe.Build();
     ASSERT_DONE(pipe);
@@ -294,7 +292,7 @@ TopoDS_Shape trimExtensions(const TopoDS_Shape &shape, const float trimR, const 
     const TopoDS_Shape topTrim = BRepPrimAPI_MakeCylinder(
         gp_Ax2(
             gp_Pnt(0, 0, m / 2.0f),
-            gp_Dir(0, 0, 1)
+            gp::DZ()
         ),
         trimR,
         m / 2.0f
@@ -302,7 +300,7 @@ TopoDS_Shape trimExtensions(const TopoDS_Shape &shape, const float trimR, const 
     const TopoDS_Shape botTrim = BRepPrimAPI_MakeCylinder(
         gp_Ax2(
             gp_Pnt(0, 0, -m),
-            gp_Dir(0, 0, 1)
+            gp::DZ()
         ),
         trimR,
         m / 2.0f
@@ -312,10 +310,7 @@ TopoDS_Shape trimExtensions(const TopoDS_Shape &shape, const float trimR, const 
 }
 
 TopoDS_Shape groove(const TopoDS_Shape &base, const TopoDS_Shape &sketch) {
-    const gp_Ax1 zAxis(
-        gp_Pnt(0, 0, 0),
-        gp_Dir(0, 0, 1)
-    );
+    const gp_Ax1 zAxis = gp::OZ();
     const TopoDS_Shape tool = BRepPrimAPI_MakeRevol(sketch, zAxis).Shape();
     return BRepAlgoAPI_Cut(base, tool).Shape();
 }
