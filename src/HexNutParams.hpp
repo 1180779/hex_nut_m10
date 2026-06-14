@@ -2,8 +2,8 @@
 // Created on 6/13/26.
 //
 
-#ifndef CAMCAM_HEX_NUT_M10_HEXNUTPARAMS_HPP
-#define CAMCAM_HEX_NUT_M10_HEXNUTPARAMS_HPP
+#ifndef CADCAM_HEX_NUT_M10_HEXNUTPARAMS_HPP
+#define CADCAM_HEX_NUT_M10_HEXNUTPARAMS_HPP
 
 #include <cmath>
 #include <array>
@@ -296,4 +296,4 @@ public:
     }
 };
 
-#endif //CAMCAM_HEX_NUT_M10_HEXNUTPARAMS_HPP
+#endif //CADCAM_HEX_NUT_M10_HEXNUTPARAMS_HPP
