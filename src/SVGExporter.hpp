@@ -475,7 +475,15 @@ inline void SVGExporter::legend(
     const std::vector<std::pair<std::string, std::string>> &rows
 ) {
     text(root, x, y, title, FONT + 1.0, "start", false);
-    text(root, x, y + 16.0, "Units: mm", FONT - 2.0, "start", false);
+    text(
+        root,
+        x,
+        y + 16.0,
+        "Units: mm; geometry driven by s, e is ISO 4032 reference min (across corners)",
+        FONT - 2.0,
+        "start",
+        false
+    );
     double col = x;
     double row = y + 34.0;
     int i = 0;
@@ -503,8 +511,8 @@ inline void SVGExporter::exportTopView(const std::string &filename) {
     const double s = m_p.getS();
     const double rHex = s / std::sqrt(3.0);
     const double rDw = m_p.getDw() / 2.0;
-    const double rBore = m_p.getD() / 2.0;
-    const double rMajor = m_p.getD() / 2.0 + m_p.getThreadDepth();
+    const double rMajor = m_p.getD() / 2.0;
+    const double rBore = rMajor - m_p.getThreadDepth();
 
     const double halfH = rHex;
     const double halfW = rHex * std::cos(std::numbers::pi_v<double> / 6.0);
@@ -554,7 +562,7 @@ inline void SVGExporter::exportTopView(const std::string &filename) {
     const double yBot = Y(-halfH);
     dimH(root, X(-s / 2.0), X(s / 2.0), yBot + DIM_GAP * 0.55, yBot, "s = " + num(s));
     const double xRight = X(halfW);
-    dimV(root, Y(halfH), Y(-halfH), xRight + DIM_GAP * 0.55, xRight, "e = " + num(e));
+    dimV(root, Y(halfH), Y(-halfH), xRight + DIM_GAP * 0.55, xRight, "e min = " + num(e));
 
     legend(
         root,
@@ -585,8 +593,8 @@ inline void SVGExporter::exportSideView(const std::string &filename) {
     const double ha = m / 2.0; // axial half-length
     const double he = e / 2.0; // radial half-width (corner)
     const double hdw = m_p.getDw() / 2.0; // bearing face half width
-    const double rBore = m_p.getD() / 2.0; // minor crest (visible hole wall)
-    const double rMajor = m_p.getD() / 2.0 + m_p.getThreadDepth(); // thread root
+    const double rMajor = m_p.getD() / 2.0;
+    const double rBore = rMajor - m_p.getThreadDepth();
     const double rda = m_p.getDa() / 2.0; // countersink mouth
 
     // external chamfer depth (axial) at the corners, countersink depth (axial)
@@ -673,11 +681,11 @@ inline void SVGExporter::exportSideView(const std::string &filename) {
     dimH(root, X(-ha), X(ha), yBot + DIM_GAP * 0.55, yBot, "m = " + num(m));
 
     const double xRight = X(ha);
-    dimV(root, Y(he), Y(-he), xRight + DIM_GAP * 0.85, xRight, "e = " + num(e));
+    dimV(root, Y(he), Y(-he), xRight + DIM_GAP * 0.85, xRight, "e min = " + num(e));
     dimV(root, Y(hdw), Y(-hdw), xRight + DIM_GAP * 0.4, xRight, "dw = " + num(m_p.getDw()));
 
     const double xLeft = X(-ha);
-    dimV(root, Y(rBore), Y(-rBore), xLeft - DIM_GAP * 0.4, xLeft, "D = " + num(m_p.getD()));
+    dimV(root, Y(rMajor), Y(-rMajor), xLeft - DIM_GAP * 0.4, xLeft, "D = " + num(m_p.getD()));
 
     legend(
         root,

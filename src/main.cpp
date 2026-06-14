@@ -231,7 +231,7 @@ TopoDS_Shape makeInternalChamferGrooveSketch(const float da, const float m, cons
 }
 
 TopoDS_Shape makeThreadTool(const float d, const float m, const float p, const float threadDepth) {
-    const float dd2 = d / 2.0f;
+    const float rMinor = d / 2.0f - threadDepth;
     const float flat = p / 8.0f;
     const float flankH = threadDepth / std::sqrt(3.0f);
 
@@ -243,10 +243,10 @@ TopoDS_Shape makeThreadTool(const float d, const float m, const float p, const f
 
     const float z0 = m / 2.0f;
 
-    const gp_Pnt pi1(dd2 - dr, 0, z0 - dz);
-    const gp_Pnt pi2(dd2 - dr, 0, z0 + 2.0f * flankH + flat + dz);
-    const gp_Pnt po1(dd2 + threadDepth, 0, z0 + flankH);
-    const gp_Pnt po2(dd2 + threadDepth, 0, z0 + flankH + flat);
+    const gp_Pnt pi1(rMinor - dr, 0, z0 - dz);
+    const gp_Pnt pi2(rMinor - dr, 0, z0 + 2.0f * flankH + flat + dz);
+    const gp_Pnt po1(rMinor + threadDepth, 0, z0 + flankH);
+    const gp_Pnt po2(rMinor + threadDepth, 0, z0 + flankH + flat);
 
     BRepBuilderAPI_MakeWire profWire;
     profWire.Add(BRepBuilderAPI_MakeEdge(pi1, pi2));
@@ -261,7 +261,7 @@ TopoDS_Shape makeThreadTool(const float d, const float m, const float p, const f
     const float tEnd = 2.0f * std::numbers::pi_v<float> * N * norm2d;
 
     const gp_Ax3 cylAx(gp::Origin(), gp::DZ());
-    Handle(Geom_CylindricalSurface) cyl = new Geom_CylindricalSurface(cylAx, dd2);
+    Handle(Geom_CylindricalSurface) cyl = new Geom_CylindricalSurface(cylAx, rMinor);
     Handle(Geom2d_Line) helixLine =
         new Geom2d_Line(
             gp_Pnt2d(0.0f, z0),
@@ -371,7 +371,7 @@ HexNutBuilder& HexNutBuilder::thread() {
 }
 
 HexNutBuilder& HexNutBuilder::bore() {
-    m_shape = cutHole(m_shape, m_p.getD() / 2.0f, m_extM);
+    m_shape = cutHole(m_shape, m_p.getD() / 2.0f - m_p.getThreadDepth(), m_extM);
     checkShape(m_shape, "bore");
     return *this;
 }
