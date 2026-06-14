@@ -32,6 +32,7 @@
 #include <numbers>
 
 #include "HexNutParams.hpp"
+#include "SVGExporter.hpp"
 
 #define ASSERT_TRUE(expr) \
     do { \
@@ -108,6 +109,10 @@ int main() {
     STEPControl_Writer stepWriter;
     stepWriter.Transfer(result, STEPControl_AsIs);
     stepWriter.Write("hex.stp");
+
+    SVGExporter svg(params);
+    svg.exportTopView("hex_top.svg");
+    svg.exportSideView("hex_side.svg");
 
     std::cout << "DONE" << std::endl;
     return 0;
@@ -326,7 +331,8 @@ void checkShape(const TopoDS_Shape &shape, const char *tag) {
 }
 
 HexNutBuilder& HexNutBuilder::hexPad() {
-    m_shape = pad(makeHexSketch(m_p.getE() / 2.0f), m_extM);
+    const float circumradius = m_p.getS() / std::sqrt(3.0f);
+    m_shape = pad(makeHexSketch(circumradius), m_extM);
     checkShape(m_shape, "hexPad");
     return *this;
 }
