@@ -38,7 +38,12 @@ FetchContent_Declare(
         GIT_REPOSITORY https://github.com/vincentlaucsb/svg.git
         GIT_TAG 0.5.0
 )
-FetchContent_MakeAvailable(svg)
+FetchContent_Declare(
+        CLI11
+        GIT_REPOSITORY https://github.com/CLIUtils/CLI11.git
+        GIT_TAG v2.6.2
+)
+FetchContent_MakeAvailable(svg CLI11)
 
 add_executable(cadcam_hex_nut_m10
         src/main.cpp
@@ -94,4 +99,5 @@ target_link_libraries(cadcam_hex_nut_m10 PRIVATE
         TKDESTL
         TKOffset
         svg
+        CLI11::CLI11
 )
