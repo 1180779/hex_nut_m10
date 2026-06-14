@@ -196,11 +196,11 @@ TopoDS_Shape makeChamferGrooveSketch(const float dw, const float e, const float 
 TopoDS_Shape makeInternalChamferGrooveSketch(const float da, const float m, const float thetaDeg) {
     const float dad2 = da / 2.0f;
     const float md2 = m / 2.0f;
-    const float chamferAngleRad = (180.0f - thetaDeg) * std::numbers::pi_v<float> / 180.0f;
+    const float chamferAngleRad = (90.0f - thetaDeg / 2.0f) * std::numbers::pi_v<float> / 180.0f;
 
-    // cone apex z-coordinate: where the slanted flank (at 180-theta from horizontal)
-    // starting at (r = da / 2, z=+-m / 2) intersects the revolution axis (r=0):
-    // apexZ = md2 - dad2 * tan(180 - theta)
+    // cone apex z-coordinate: where the slanted flank starting at (r = da / 2, z=+-m / 2)
+    // intersects the revolution axis (r=0):
+    // apexZ = md2 - dad2 * tan(90 - theta / 2)
     const float apexZ = md2 - dad2 * std::tan(chamferAngleRad);
 
     auto makeTri = [](const gp_Pnt &a, const gp_Pnt &b, const gp_Pnt &c) {
