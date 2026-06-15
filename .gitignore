@@ -132,6 +132,9 @@ dkms.conf
 # CMake
 cmake-build-*/
 
+# Local machine-specific config (paths to OpenCASCADE, etc.)
+.env
+
 # Mongo Explorer plugin
 .idea/**/mongoSettings.xml
 
