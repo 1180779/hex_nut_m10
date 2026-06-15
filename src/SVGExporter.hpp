@@ -8,6 +8,8 @@
 #include <numbers>
 #include <sstream>
 #include <iomanip>
+#include <algorithm>
+#include <limits>
 
 #include "HexNutParams.hpp"
 
@@ -47,7 +49,7 @@ private:
     static constexpr double TITLE_H = 26.0;
 
     /// @brief room reserved for the legend
-    static constexpr double LEGEND_H = 78.0;
+    static constexpr double LEGEND_H = 96.0;
     static constexpr double FONT = 13.0;
     static constexpr double ARROW = 7.0;
 
@@ -153,6 +155,11 @@ private:
     /// @param y0 first corner Y-coordinate
     /// @param y1 second corner Y-coordinate
     static void hatchRect(SVG::SVG &root, double x0, double x1, double y0, double y1);
+
+    /// @brief fills an arbitrary simple polygon with 45-degree section hatching
+    /// @param root SVG root object
+    /// @param pts polygon vertices in screen coordinates (implicitly closed)
+    static void hatchPolygon(SVG::SVG &root, const std::vector<SVG::Point> &pts);
 
     /// @brief draws a filled triangular arrowhead at a given tip position and angle
     /// @param root SVG root object
@@ -366,6 +373,42 @@ inline void SVGExporter::hatchRect(SVG::SVG &root, double x0, double x1, double 
     }
 }
 
+inline void SVGExporter::hatchPolygon(SVG::SVG &root, const std::vector<SVG::Point> &pts) {
+    if (pts.size() < 3) {
+        return;
+    }
+    constexpr double spacing = 7.0;
+    // Hatch lines run at 45 degrees: x + y = c. Sweep c across the polygon and
+    // clip each line to the polygon by collecting edge crossings (even-odd rule).
+    double cMin = std::numeric_limits<double>::max();
+    double cMax = std::numeric_limits<double>::lowest();
+    for (const auto &[x, y] : pts) {
+        cMin = std::min(cMin, x + y);
+        cMax = std::max(cMax, x + y);
+    }
+    const std::size_t n = pts.size();
+    const int numLines = static_cast<int>((cMax - cMin) / spacing);
+    for (int li = 1; li <= numLines; ++li) {
+        const double c = cMin + static_cast<double>(li) * spacing;
+        std::vector<double> xs;
+        for (std::size_t i = 0; i < n; ++i) {
+            const auto &[ax, ay] = pts[i];
+            const auto &[bx, by] = pts[(i + 1) % n];
+            const double fa = ax + ay - c;
+            const double fb = bx + by - c;
+            // half-open test so shared vertices aren't counted twice
+            if ((fa <= 0.0 && fb > 0.0) || (fa > 0.0 && fb <= 0.0)) {
+                const double u = fa / (fa - fb);
+                xs.push_back(ax + u * (bx - ax));
+            }
+        }
+        std::ranges::sort(xs);
+        for (std::size_t k = 0; k + 1 < xs.size(); k += 2) {
+            line(root, xs[k], c - xs[k], xs[k + 1], c - xs[k + 1], HATCH, 0.5);
+        }
+    }
+}
+
 inline void SVGExporter::arrowHead(
     SVG::SVG &root,
     const double tipX,
@@ -422,12 +465,13 @@ inline void SVGExporter::dimH(
     const double yFeature,
     const std::string &label
 ) {
-    const double dir = (yDim >= yFeature)
+    const double dir = yDim >= yFeature
                            ? 1.0
                            : -1.0;
-    // extension lines
-    line(root, x1, yFeature, x1, yDim + dir * 4.0, AXIS, 0.5);
-    line(root, x2, yFeature, x2, yDim + dir * 4.0, AXIS, 0.5);
+    // extension lines: small gap off the feature, slight overshoot past the dim line
+    constexpr double gap = 2.0;
+    line(root, x1, yFeature + dir * gap, x1, yDim + dir * 4.0, AXIS, 0.5);
+    line(root, x2, yFeature + dir * gap, x2, yDim + dir * 4.0, AXIS, 0.5);
 
     // dimension line and outward arrow heads
     line(root, x1, yDim, x2, yDim, DIMC, 0.8);
@@ -448,9 +492,10 @@ inline void SVGExporter::dimV(
     const double dir = xDim >= xFeature
                            ? 1.0
                            : -1.0;
-    // extension lines
-    line(root, xFeature, y1, xDim + dir * 4.0, y1, AXIS, 0.5);
-    line(root, xFeature, y2, xDim + dir * 4.0, y2, AXIS, 0.5);
+    // extension lines: small gap off the feature, slight overshoot past the dim line
+    constexpr double gap = 2.0;
+    line(root, xFeature + dir * gap, y1, xDim + dir * 4.0, y1, AXIS, 0.5);
+    line(root, xFeature + dir * gap, y2, xDim + dir * 4.0, y2, AXIS, 0.5);
 
     // dimension line and outward arrow heads
     line(root, xDim, y1, xDim, y2, DIMC, 0.8);
@@ -478,13 +523,23 @@ inline void SVGExporter::legend(
         root,
         x,
         y + 16.0,
-        "Units: mm; geometry driven by s, e is ISO 4032 reference min (across corners)",
+        "Units: mm; geometry driven by s,",
         FONT - 2.0,
         "start",
         false
     );
+    text(
+        root,
+        x,
+        y + 30.0,
+        "e is ISO 4032 reference min (across corners)",
+        FONT - 2.0,
+        "start",
+        false
+    );
+    const double rowStart = y + 48.0;
     double col = x;
-    double row = y + 34.0;
+    double row = rowStart;
     int i = 0;
     for (const auto &[dim, value] : rows) {
         std::string label = dim;
@@ -494,7 +549,7 @@ inline void SVGExporter::legend(
         row += 15.0;
         if (++i % 3 == 0) {
             col += 150.0;
-            row = y + 34.0;
+            row = rowStart;
         }
     }
 }
@@ -557,11 +612,12 @@ inline void SVGExporter::exportTopView(const std::string &filename) {
     brokenCircle(root, X(0.0), Y(0.0), rMajor * SCALE, THIN, 1.0);
     circle(root, X(0.0), Y(0.0), rBore * SCALE, OUTLINE, 1.4);
 
-    // dimensions: s across flats (bottom, horizontal), e across corners (right, vertical)
+    // dimensions
     const double yBot = Y(-halfH);
-    dimH(root, X(-s / 2.0), X(s / 2.0), yBot + DIM_GAP * 0.55, yBot, "s = " + num(s));
+    dimH(root, X(-s / 2.0), X(s / 2.0), yBot + DIM_GAP * 0.55, Y(-rHex / 2.0), "s = " + num(s));
+
     const double xRight = X(halfW);
-    dimV(root, Y(halfH), Y(-halfH), xRight + DIM_GAP * 0.55, xRight, "e min = " + num(e));
+    dimV(root, Y(halfH), Y(-halfH), xRight + DIM_GAP * 0.55, X(0.0), "e min = " + num(e));
 
     legend(
         root,
@@ -583,24 +639,20 @@ inline void SVGExporter::exportTopView(const std::string &filename) {
 }
 
 inline void SVGExporter::exportSideView(const std::string &filename) {
-    // ISO orientation: the nut axis is horizontal. Model x is the axial
-    // direction (nut height m), model y is the radial direction (across corners e).
     const double e = m_p.getE();
     const double s = m_p.getS();
     const double m = m_p.getM();
     const double beta = m_p.getBeta() * std::numbers::pi_v<double> / 180.0;
-    const double ha = m / 2.0; // axial half-length
-    const double he = e / 2.0; // radial half-width (corner)
-    const double hdw = m_p.getDw() / 2.0; // bearing face half width
+    const double ha = m / 2.0;
+    const double he = e / 2.0;
+    const double hdw = m_p.getDw() / 2.0;
     const double rMajor = m_p.getD() / 2.0;
     const double rBore = rMajor - m_p.getThreadDepth();
-    const double rda = m_p.getDa() / 2.0; // countersink mouth
+    const double rda = m_p.getDa() / 2.0;
 
-    // external chamfer depth (axial) at the corners, countersink depth (axial)
     const double cd = (he - hdw) * std::tan(beta);
-    const double cdMax = std::max(cd, 0.0);
     const double csDepth = (rda - rBore) * std::tan(
-        (180.0 - m_p.getTheta()) * std::numbers::pi_v<double> / 180.0
+        (90.0 - m_p.getTheta() / 2.0) * std::numbers::pi_v<double> / 180.0
     );
 
     const double contentW = m * SCALE;
@@ -626,10 +678,23 @@ inline void SVGExporter::exportSideView(const std::string &filename) {
         "middle"
     );
 
-    // section hatching of the material bands,
-    // clipped to the straight portion so it doesn't spill past the chamfers
-    hatchRect(root, X(-(ha - cdMax)), X(ha - cdMax), Y(rBore), Y(he));
-    hatchRect(root, X(-(ha - cdMax)), X(ha - cdMax), Y(-rBore), Y(-he));
+    auto hatchBand = [&](const double sign) {
+        const std::vector<SVG::Point> band = {
+            // outer edge: bearing face -> chamfer -> corner -> chamfer -> bearing face
+            {X(-ha), Y(sign * hdw)},
+            {X(-(ha - cd)), Y(sign * he)},
+            {X(ha - cd), Y(sign * he)},
+            {X(ha), Y(sign * hdw)},
+            // inner edge: countersink mouth -> cone -> bore -> cone -> countersink mouth
+            {X(ha), Y(sign * rda)},
+            {X(ha - csDepth), Y(sign * rBore)},
+            {X(-(ha - csDepth)), Y(sign * rBore)},
+            {X(-ha), Y(sign * rda)},
+        };
+        hatchPolygon(root, band);
+    };
+    hatchBand(1.0);
+    hatchBand(-1.0);
 
     // outer profile with chamfered end corners
     auto outerHalf = [&](const double sign) {
@@ -654,7 +719,7 @@ inline void SVGExporter::exportSideView(const std::string &filename) {
 
     // bore wall and countersinks
     auto boreHalf = [&](const double sign) {
-        std::vector<SVG::Point> p = {
+        const std::vector<SVG::Point> p = {
             // countersink mouth (right)
             {X(ha), Y(sign * rda)},
             // in to minor crest
@@ -677,14 +742,12 @@ inline void SVGExporter::exportSideView(const std::string &filename) {
 
     // dimensions
     const double yBot = Y(-he);
-    dimH(root, X(-ha), X(ha), yBot + DIM_GAP * 0.55, yBot, "m = " + num(m));
+    dimH(root, X(-ha), X(ha), yBot + DIM_GAP * 0.55, Y(-hdw), "m = " + num(m));
 
     const double xRight = X(ha);
-    dimV(root, Y(he), Y(-he), xRight + DIM_GAP * 0.85, xRight, "e min = " + num(e));
+    dimV(root, Y(he), Y(-he), xRight + DIM_GAP * 0.85, X(ha - cd), "e min = " + num(e));
     dimV(root, Y(hdw), Y(-hdw), xRight + DIM_GAP * 0.4, xRight, "dw = " + num(m_p.getDw()));
-
-    const double xLeft = X(-ha);
-    dimV(root, Y(rMajor), Y(-rMajor), xLeft - DIM_GAP * 0.4, xLeft, "D = " + num(m_p.getD()));
+    dimV(root, Y(rMajor), Y(-rMajor), X(-ha) - DIM_GAP * 0.4, X(-(ha - csDepth)), "D = " + num(m_p.getD()));
 
     legend(
         root,
