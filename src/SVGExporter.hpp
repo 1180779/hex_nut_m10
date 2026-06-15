@@ -47,7 +47,7 @@ private:
     static constexpr double TITLE_H = 26.0;
 
     /// @brief room reserved for the legend
-    static constexpr double LEGEND_H = 78.0;
+    static constexpr double LEGEND_H = 96.0;
     static constexpr double FONT = 13.0;
     static constexpr double ARROW = 7.0;
 
@@ -422,7 +422,7 @@ inline void SVGExporter::dimH(
     const double yFeature,
     const std::string &label
 ) {
-    const double dir = (yDim >= yFeature)
+    const double dir = yDim >= yFeature
                            ? 1.0
                            : -1.0;
     // extension lines
@@ -478,13 +478,23 @@ inline void SVGExporter::legend(
         root,
         x,
         y + 16.0,
-        "Units: mm; geometry driven by s, e is ISO 4032 reference min (across corners)",
+        "Units: mm; geometry driven by s,",
         FONT - 2.0,
         "start",
         false
     );
+    text(
+        root,
+        x,
+        y + 30.0,
+        "e is ISO 4032 reference min (across corners)",
+        FONT - 2.0,
+        "start",
+        false
+    );
+    const double rowStart = y + 48.0;
     double col = x;
-    double row = y + 34.0;
+    double row = rowStart;
     int i = 0;
     for (const auto &[dim, value] : rows) {
         std::string label = dim;
@@ -494,7 +504,7 @@ inline void SVGExporter::legend(
         row += 15.0;
         if (++i % 3 == 0) {
             col += 150.0;
-            row = y + 34.0;
+            row = rowStart;
         }
     }
 }
@@ -654,7 +664,7 @@ inline void SVGExporter::exportSideView(const std::string &filename) {
 
     // bore wall and countersinks
     auto boreHalf = [&](const double sign) {
-        std::vector<SVG::Point> p = {
+        const std::vector<SVG::Point> p = {
             // countersink mouth (right)
             {X(ha), Y(sign * rda)},
             // in to minor crest
